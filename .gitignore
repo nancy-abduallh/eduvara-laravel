@@ -1,0 +1,32 @@
+# Laravel specific
+/vendor/
+/node_modules/
+/storage/
+.env
+.env.backup
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# AI service (separate repository)
+/ai-service/
+
+# Large model files (should not be in Laravel repo)
+*.safetensors
+*.bin
+*.pth
+*.mp4
+*.mp3
+*.pptx
+*.png
+*.jpg
+*.pdf
+/storage/outputs/
