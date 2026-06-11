@@ -36,7 +36,8 @@ RUN mkdir -p bootstrap/cache \
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # Build frontend assets so public/build/ exists in the image
-RUN npm ci && npm run build && rm -rf node_modules
+# Using --no-audit --no-fund for faster install; no package-lock.json required
+RUN npm install --no-audit --no-fund && npm run build && rm -rf node_modules
 
 RUN cp .env.example .env \
     && php artisan key:generate
