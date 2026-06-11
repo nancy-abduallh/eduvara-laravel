@@ -1,6 +1,6 @@
 FROM php:8.2-fpm-alpine
 
-# System deps
+# System deps + Node.js (for Vite asset build)
 RUN apk add --no-cache \
     nginx \
     supervisor \
@@ -11,6 +11,8 @@ RUN apk add --no-cache \
     libzip-dev \
     oniguruma-dev \
     postgresql-dev \
+    nodejs \
+    npm \
     && docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring zip opcache
 
 WORKDIR /var/www/html
@@ -22,7 +24,6 @@ COPY . .
 
 COPY docker/ca.pem /etc/ssl/certs/aiven-ca.crt
 
-
 # Storage dirs
 RUN mkdir -p bootstrap/cache \
     storage/framework/sessions \
@@ -33,6 +34,9 @@ RUN mkdir -p bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
 RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Build frontend assets so public/build/ exists in the image
+RUN npm ci && npm run build && rm -rf node_modules
 
 RUN cp .env.example .env \
     && php artisan key:generate
