@@ -27,5 +27,9 @@ class AppServiceProvider extends ServiceProvider
         Blade::directive('currentLocale', function () {
             return "<?php echo LaravelLocalization::getCurrentLocale(); ?>";
         });
+
+        if (config('app.env') === 'production') {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
     }
 }
