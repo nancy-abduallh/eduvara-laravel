@@ -1,8 +1,55 @@
-node_modules
-vendor
-storage/logs
-storage/framework/cache
-storage/framework/sessions
-storage/framework/views
-.git
+# Git
+.git/
+.gitignore
+
+# Dependencies
+vendor/
+node_modules/
+bootstrap/cache/
+storage/framework/
+storage/logs/
+storage/app/*
+
+# Environment
 .env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+*.tmp
+*.cache
+storage/debugbar/
+
+# AI service folder (if inside Laravel)
+ai-service/
+Ai Models/
+
+# Models and large assets (if any)
+models/
+*.safetensors
+*.bin
+*.pth
+
+# Composer & NPM
+composer.phar
+package-lock.json
+yarn.lock
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Testing & misc
+phpunit.xml
+tests/
+*.md

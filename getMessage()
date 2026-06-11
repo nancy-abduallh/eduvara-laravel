@@ -1,0 +1,14 @@
+[2mDEBUG[0m failed to initialize file logger: open C:\Users\user\.fly\logs\flyctl-2026-06-11T12:00:51+03:00.log: The filename, directory name, or volume label syntax is incorrect.
+[2mDEBUG[0m Loaded flyctl config fromC:\Users\user\.fly/config.yml
+[2mDEBUG[0m Retrieving app info for eduvara
+
+[2mDEBUG[0m Fetching certificate for fdaa:7e:791b:a7b:5b2:89bc:12cc:2
+
+[2mDEBUG[0m Keys for fdaa:7e:791b:a7b:5b2:89bc:12cc:2 configured; connecting...
+
+[2mDEBUG[0m Connection fdaa:7e:791b:a7b:5b2:89bc:12cc:2 completed.
+
+
+Parse error: syntax error, unexpected token "." in Command line code on line 1
+[2mDEBUG[0m Config has metrics token
+

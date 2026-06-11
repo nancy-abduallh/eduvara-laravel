@@ -1,6 +1,6 @@
 FROM php:8.2-fpm-alpine
 
-# Install system dependencies
+# System deps
 RUN apk add --no-cache \
     nginx \
     supervisor \
@@ -13,39 +13,32 @@ RUN apk add --no-cache \
     postgresql-dev \
     && docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring zip opcache
 
-# Set working directory
 WORKDIR /var/www/html
 
-# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Allow Composer to run as root
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Copy application files
 COPY . .
 
-# Create necessary directories BEFORE composer install
+# Storage dirs
 RUN mkdir -p bootstrap/cache \
-    && mkdir -p storage/framework/sessions \
-    && mkdir -p storage/framework/views \
-    && mkdir -p storage/framework/cache \
-    && mkdir -p storage/logs \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/framework/cache \
+    storage/logs \
     && chmod -R 775 storage bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-# Install PHP dependencies (skip dev)
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Copy environment file and generate key
 RUN cp .env.example .env \
     && php artisan key:generate
 
-# Optimize Laravel
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
+# Copy nginx + supervisor config
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/supervisord.conf /etc/supervisord.conf
 
 EXPOSE 8080
 
-CMD ["php-fpm"]
+# Supervisor runs both nginx (HTTP on 8080) and php-fpm (FastCGI on 9000)
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
