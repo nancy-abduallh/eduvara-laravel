@@ -13,7 +13,8 @@
     --secondary: #F59E0B;
     --accent:    #10B981;
     --dark:      #0D0D1A;
-    --darker:    #07070F;
+    /* --darker:    #07070F; */
+    --darker: linear-gradient(135deg, #FFD6A6, #FFF0BE);;
     --card-bg:   rgba(255,255,255,0.04);
     --text:      #F8FAFC;
     --muted:     rgba(248,250,252,0.55);
