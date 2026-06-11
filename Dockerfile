@@ -20,6 +20,9 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 
 COPY . .
 
+COPY docker/ca.pem /etc/ssl/certs/aiven-ca.crt
+
+
 # Storage dirs
 RUN mkdir -p bootstrap/cache \
     storage/framework/sessions \
