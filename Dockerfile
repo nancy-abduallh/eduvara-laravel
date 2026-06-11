@@ -25,8 +25,12 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 # Copy application files
 COPY . .
 
-# Create necessary directories and set permissions
-RUN mkdir -p bootstrap/cache storage/framework/{sessions,views,cache} storage/logs \
+# Create necessary directories BEFORE composer install
+RUN mkdir -p bootstrap/cache \
+    && mkdir -p storage/framework/sessions \
+    && mkdir -p storage/framework/views \
+    && mkdir -p storage/framework/cache \
+    && mkdir -p storage/logs \
     && chmod -R 775 storage bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
