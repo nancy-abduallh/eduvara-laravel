@@ -36,8 +36,15 @@ class AiApiService
         if (empty($language)) {
             return false;
         }
+        $lang = mb_strtolower(trim($language));
+
+        // Catch locale variants like 'ar_SA', 'ar-EG', 'ar_eg', etc.
+        if (str_starts_with($lang, 'ar_') || str_starts_with($lang, 'ar-')) {
+            return true;
+        }
+
         return in_array(
-            mb_strtolower(trim($language)),
+            $lang,
             ['ar', 'arabic', 'عربي', 'عربية'],
             true
         );
@@ -57,12 +64,19 @@ class AiApiService
     public function requestVideoGeneration(array $payload): array
     {
         $language = $payload['language'] ?? 'en';
+        $arabic   = $this->isArabic($language);
 
         // Use the explicit Arabic endpoint for clarity, even though the
         // unified /api/generate-video also auto-routes on language='ar'.
-        $endpoint = $this->isArabic($language)
+        $endpoint = $arabic
             ? "{$this->baseUrl}/api/ar/generate-video"
             : "{$this->baseUrl}/api/generate-video";
+
+        Log::info('Video generation routing', [
+            'language_received' => $language,
+            'is_arabic'         => $arabic,
+            'endpoint'          => $endpoint,
+        ]);
 
         try {
             $response = $this->client()->post($endpoint, $payload);
