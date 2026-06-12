@@ -33,3 +33,7 @@ console_command = 'php /var/www/html/artisan tinker'
   cpu_kind = 'shared'
   cpus = 1
   memory_mb = 1024
+
+[mounts]
+  source = "edugenie_outputs"
+  destination = "/app/outputs"

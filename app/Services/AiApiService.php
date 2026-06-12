@@ -25,22 +25,60 @@ class AiApiService
         ])->timeout(60);
     }
 
+    // ── Language helper ───────────────────────────────────────────────────────
+
+    /**
+     * Returns true when the language code indicates Arabic.
+     * Accepts: 'ar', 'arabic', 'عربي', 'عربية' (case-insensitive).
+     */
+    private function isArabic(?string $language): bool
+    {
+        if (empty($language)) {
+            return false;
+        }
+        return in_array(
+            mb_strtolower(trim($language)),
+            ['ar', 'arabic', 'عربي', 'عربية'],
+            true
+        );
+    }
+
     // ── Video generation ─────────────────────────────────────────────────────
 
     /**
      * Request asynchronous video generation.
-     * Returns ['job_id' => '...', 'status' => 'queued'].
+     *
+     * Automatically routes to the Arabic pipeline when $payload['language']
+     * is 'ar' (or any Arabic language alias). The AI service also supports
+     * an explicit POST /api/ar/generate-video endpoint.
+     *
+     * Returns ['job_id' => '...', 'status' => 'queued', 'language' => 'en|ar'].
      */
     public function requestVideoGeneration(array $payload): array
     {
+        $language = $payload['language'] ?? 'en';
+
+        // Use the explicit Arabic endpoint for clarity, even though the
+        // unified /api/generate-video also auto-routes on language='ar'.
+        $endpoint = $this->isArabic($language)
+            ? "{$this->baseUrl}/api/ar/generate-video"
+            : "{$this->baseUrl}/api/generate-video";
+
         try {
-            $response = $this->client()->post("{$this->baseUrl}/api/generate-video", $payload);
+            $response = $this->client()->post($endpoint, $payload);
             $data     = $response->json();
-            Log::info('Video generation queued', ['job_id' => $data['job_id'] ?? null]);
+            Log::info('Video generation queued', [
+                'job_id'   => $data['job_id']  ?? null,
+                'language' => $data['language'] ?? $language,
+            ]);
             return $data;
         } catch (\Exception $e) {
             Log::error('AI video generation request failed', ['error' => $e->getMessage()]);
-            return ['job_id' => 'mock_' . uniqid(), 'status' => 'queued'];
+            return [
+                'job_id'   => 'mock_' . uniqid(),
+                'status'   => 'queued',
+                'language' => $language,
+            ];
         }
     }
 
@@ -49,23 +87,36 @@ class AiApiService
     /**
      * Generate MCQs from a video script.
      *
+     * Routes to the Arabic pipeline when $payload['language'] is 'ar'.
+     *
      * @param  array  $payload  Must include 'script', 'video_id', 'topic', 'language'.
-     *                          Optionally 'k_slide_question_texts'.
+     *                          Optionally 'k_slide_question_texts', 'num_questions'.
      * @return array            List of question objects ready for GenerateQuizJob.
      */
     public function generateQuiz(array $payload): array
     {
+        $language = $payload['language'] ?? 'en';
+
+        $endpoint = $this->isArabic($language)
+            ? "{$this->baseUrl}/api/ar/generate-quiz"
+            : "{$this->baseUrl}/api/generate-quiz";
+
         try {
             $response = $this->client()
                 ->timeout(300)
-                ->post("{$this->baseUrl}/api/generate-quiz", $payload);
+                ->post($endpoint, $payload);
 
             $questions = $response->json('questions', []);
-            Log::info('Quiz generated', ['count' => count($questions)]);
+            Log::info('Quiz generated', [
+                'count'    => count($questions),
+                'language' => $language,
+            ]);
             return $questions;
         } catch (\Exception $e) {
             Log::error('AI quiz generation failed', ['error' => $e->getMessage()]);
-            return $this->getMockQuizQuestions();
+            return $this->isArabic($language)
+                ? $this->getMockArabicQuizQuestions()
+                : $this->getMockQuizQuestions();
         }
     }
 
@@ -76,6 +127,7 @@ class AiApiService
      *
      * Falls back to local scoring whenever the AI service is unreachable,
      * returns a non-2xx status, or omits the required 'result' key.
+     * (VARK classification is language-agnostic — same endpoint for both.)
      */
     public function classifyVark(array $answers): array
     {
@@ -84,7 +136,6 @@ class AiApiService
                 'answers' => $answers,
             ]);
 
-            // A 404 / 500 is not a PHP exception — we must check explicitly.
             if (! $response->successful()) {
                 Log::warning('VARK AI returned non-success status — falling back to local scoring', [
                     'status' => $response->status(),
@@ -95,7 +146,6 @@ class AiApiService
 
             $data = $response->json();
 
-            // Guard against a response that is missing the 'result' key.
             if (! isset($data['result'])) {
                 Log::warning('VARK AI response missing "result" key — falling back to local scoring', [
                     'data' => $data,
@@ -117,6 +167,7 @@ class AiApiService
 
     /**
      * Analyse wrong answers and return misconception strings.
+     * Works for both languages — the AI service handles the language internally.
      */
     public function analyzeMisconceptions(array $payload): array
     {
@@ -125,7 +176,11 @@ class AiApiService
             return $response->json('misconceptions', []);
         } catch (\Exception $e) {
             Log::error('Misconception analysis failed', ['error' => $e->getMessage()]);
-            return ['Unable to identify specific misconceptions at this time.'];
+
+            $language = $payload['language'] ?? 'en';
+            return $this->isArabic($language)
+                ? ['تعذّر تحديد المفاهيم الخاطئة في الوقت الحالي.']
+                : ['Unable to identify specific misconceptions at this time.'];
         }
     }
 
@@ -133,15 +188,25 @@ class AiApiService
 
     /**
      * Request an adaptive remedial lesson video.
+     * Routes to the Arabic pipeline when $payload['language'] is 'ar'.
      */
     public function requestAdaptiveLesson(array $payload): array
     {
+        $language = $payload['language'] ?? 'en';
+
+        $endpoint = $this->isArabic($language)
+            ? "{$this->baseUrl}/api/ar/generate-adaptive-lesson"
+            : "{$this->baseUrl}/api/generate-adaptive-lesson";
+
         try {
-            $response = $this->client()->post("{$this->baseUrl}/api/generate-adaptive-lesson", $payload);
+            $response = $this->client()->post($endpoint, $payload);
             return $response->json();
         } catch (\Exception $e) {
             Log::error('Adaptive lesson request failed', ['error' => $e->getMessage()]);
-            return ['job_id' => 'mock_adaptive_' . uniqid()];
+            return [
+                'job_id'   => 'mock_adaptive_' . uniqid(),
+                'language' => $language,
+            ];
         }
     }
 
@@ -151,13 +216,10 @@ class AiApiService
     {
         $scores = ['visual' => 0, 'auditory' => 0, 'reading' => 0, 'kinesthetic' => 0];
 
-        // Default letter→dimension map matches the questionnaire's a/b/c/d options.
         $letterMap = ['a' => 'visual', 'b' => 'auditory', 'c' => 'reading', 'd' => 'kinesthetic'];
         $configMap = config('vark.answer_map', []);
 
         foreach ($answers as $qId => $answer) {
-            // Try the config map first (allows per-question overrides), then the
-            // default letter map.
             $dim = $configMap[$qId][$answer] ?? $letterMap[strtolower($answer)] ?? null;
             if ($dim && array_key_exists($dim, $scores)) {
                 $scores[$dim]++;
@@ -168,7 +230,7 @@ class AiApiService
         return array_merge($scores, ['result' => $result]);
     }
 
-    // ── Mock fallback ─────────────────────────────────────────────────────────
+    // ── Mock fallbacks ────────────────────────────────────────────────────────
 
     private function getMockQuizQuestions(): array
     {
@@ -178,6 +240,18 @@ class AiApiService
                 'options'        => ['Option A', 'Option B', 'Option C', 'Option D'],
                 'correct_answer' => 'Option A',
                 'explanation'    => 'This is the primary concept covered.',
+            ],
+        ];
+    }
+
+    private function getMockArabicQuizQuestions(): array
+    {
+        return [
+            [
+                'question'       => 'ما المفهوم الرئيسي الذي تناولته هذه المحاضرة؟',
+                'options'        => ['الخيار أ', 'الخيار ب', 'الخيار ج', 'الخيار د'],
+                'correct_answer' => 'الخيار أ',
+                'explanation'    => 'هذا هو المفهوم الأساسي المُغطَّى في المحاضرة.',
             ],
         ];
     }
