@@ -34,11 +34,11 @@ class GenerateQuizJob implements ShouldQueue
         ]);
 
         $questions = $aiService->generateQuiz([
-            'video_id'              => $this->video->id,
-            'topic'                 => $this->video->topic,
-            'script'                => $this->video->script,
-            'language'              => $this->video->language,
-            // Exclude questions already used in K-type slides
+            'video_id'               => $this->video->id,
+            'topic'                  => $this->video->topic,
+            'script'                 => $this->video->script,
+            'language'               => $this->video->language,
+            'learning_style'         => $this->video->learning_style ?? 'V',
             'k_slide_question_texts' => $this->kSlideQuestionTexts,
         ]);
 

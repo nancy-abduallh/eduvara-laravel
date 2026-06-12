@@ -42,14 +42,23 @@ class Video extends Model
 
     public function getVideoUrlAttribute(): ?string
     {
-        return $this->video_path ? asset('storage/' . $this->video_path) : null;
+        if (!$this->video_path) {
+            return null;
+        }
+
+        
+        $aiBase = rtrim(config('services.ai.url', 'http://localhost:8001'), '/');
+        return $aiBase . '/outputs/' . ltrim($this->video_path, '/');
     }
 
     public function getThumbnailUrlAttribute(): ?string
     {
-        return $this->thumbnail_path
-            ? asset('storage/' . $this->thumbnail_path)
-            : asset('images/default-thumbnail.jpg');
+        if (!$this->thumbnail_path) {
+            return asset('images/default-thumbnail.jpg');
+        }
+
+        $aiBase = rtrim(config('services.ai.url', 'http://localhost:8001'), '/');
+        return $aiBase . '/outputs/' . ltrim($this->thumbnail_path, '/');
     }
 
     public function isReady(): bool
