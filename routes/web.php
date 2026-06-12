@@ -47,20 +47,22 @@ Route::group([
     });
 
     // ─── Student Area ───────────────────────────────────────
+    // ─── Student Area ───────────────────────────────────────
     Route::middleware(['auth', 'onboarding'])->prefix('student')->name('student.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
         Route::get('/upload',  [UploadController::class, 'index'])->name('upload');
         Route::post('/upload', [UploadController::class, 'store'])->name('upload.store');
 
-        Route::get('/videos',              [VideoController::class, 'index'])->name('videos');
-        Route::get('/videos/{video}',      [VideoController::class, 'show'])->name('videos.show');
-        Route::post('/videos/request',     [VideoController::class, 'requestGeneration'])->name('videos.request');
-        Route::get('/videos/{video}/status',[VideoController::class, 'status'])->name('videos.status');
+        Route::post('/videos/request', [VideoController::class, 'requestGeneration'])->name('videos.request');
+        
+        Route::get('/videos',               [VideoController::class, 'index'])->name('videos');
+        Route::get('/videos/{video}',       [VideoController::class, 'show'])->name('videos.show');
+        Route::get('/videos/{video}/status', [VideoController::class, 'status'])->name('videos.status');
 
-        Route::get('/quiz/{video}',           [QuizController::class, 'show'])->name('quiz.show');
-        Route::post('/quiz/{quiz}/submit',    [QuizController::class, 'submit'])->name('quiz.submit');
-        Route::get('/quiz/result/{attempt}',  [QuizController::class, 'result'])->name('quiz.result');
+        Route::get('/quiz/{video}',          [QuizController::class, 'show'])->name('quiz.show');
+        Route::post('/quiz/{quiz}/submit',   [QuizController::class, 'submit'])->name('quiz.submit');
+        Route::get('/quiz/result/{attempt}', [QuizController::class, 'result'])->name('quiz.result');
 
         Route::get('/history',        [HistoryController::class, 'index'])->name('history');
         Route::get('/history/chats',  [HistoryController::class, 'chats'])->name('history.chats');
