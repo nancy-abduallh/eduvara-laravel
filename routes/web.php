@@ -14,6 +14,8 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Admin\VideoController as AdminVideoController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\Student\ChatController;
+
 
 // ─── Localization Route (must be outside locale group) ───
 Route::get('locale/{locale}', [LocaleController::class, 'setLocale'])->name('locale.set');
@@ -67,6 +69,8 @@ Route::group([
         Route::get('/history',        [HistoryController::class, 'index'])->name('history');
         Route::get('/history/chats',  [HistoryController::class, 'chats'])->name('history.chats');
         Route::get('/history/videos', [HistoryController::class, 'videos'])->name('history.videos');
+        Route::post('/chat/send', [ChatController::class, 'send'])->name('chat.send');
+
     });
 
     // ─── Admin Area ─────────────────────────────────────────

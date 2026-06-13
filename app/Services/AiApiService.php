@@ -25,29 +25,85 @@ class AiApiService
         ])->timeout(60);
     }
 
-    // ── Language helper ───────────────────────────────────────────────────────
+    // ── Language detection ────────────────────────────────────────────────────
 
     /**
-     * Returns true when the language code indicates Arabic.
-     * Accepts: 'ar', 'arabic', 'عربي', 'عربية' (case-insensitive).
+     * Detect the pipeline language from a payload by inspecting TEXT CONTENT
+     * first (topic / caption / script), then falling back to the explicit
+     * `language` field.
+     *
+     * This makes the pipeline language depend on what the user TYPED, not on
+     * which page/form they used.
+     *
+     * Returns 'ar' or 'en'.
      */
-    private function isArabic(?string $language): bool
+    private function detectLanguage(array $payload): string
+    {
+        // Gather all user-supplied text fields
+        $textParts = array_filter([
+            $payload['topic']   ?? '',
+            $payload['caption'] ?? '',
+            $payload['script']  ?? '',
+        ]);
+        $combined = implode(' ', $textParts);
+
+        if (mb_strlen(trim($combined)) > 0) {
+            return $this->containsArabic($combined) ? 'ar' : 'en';
+        }
+
+        // No text content — fall back to the explicit language field
+        return $this->isArabicLangCode($payload['language'] ?? null) ? 'ar' : 'en';
+    }
+
+    /**
+     * Return true if $text contains a meaningful proportion of Arabic characters
+     * (≥ 15 % of non-whitespace characters are in an Arabic Unicode block).
+     */
+    private function containsArabic(string $text): bool
+    {
+        $letters = preg_replace('/\s+/u', '', $text);
+        $total   = mb_strlen($letters);
+        if ($total === 0) {
+            return false;
+        }
+
+        // Count Arabic-block characters
+        $arabicCount = 0;
+        $len = mb_strlen($letters);
+        for ($i = 0; $i < $len; $i++) {
+            $char     = mb_substr($letters, $i, 1);
+            $codePoint = mb_ord($char, 'UTF-8');
+            if (
+                ($codePoint >= 0x0600 && $codePoint <= 0x06FF)   // Arabic
+                || ($codePoint >= 0x0750 && $codePoint <= 0x077F) // Arabic Supplement
+                || ($codePoint >= 0x08A0 && $codePoint <= 0x08FF) // Arabic Extended-A
+                || ($codePoint >= 0xFB50 && $codePoint <= 0xFDFF) // Arabic Presentation Forms-A
+                || ($codePoint >= 0xFE70 && $codePoint <= 0xFEFF) // Arabic Presentation Forms-B
+            ) {
+                $arabicCount++;
+            }
+        }
+
+        return ($arabicCount / $total) >= 0.15;
+    }
+
+    /**
+     * Returns true when the language code string indicates Arabic.
+     * Accepts: 'ar', 'ar_SA', 'ar-EG', 'arabic', 'عربي', 'عربية'
+     * (case-insensitive).
+     */
+    private function isArabicLangCode(?string $language): bool
     {
         if (empty($language)) {
             return false;
         }
         $lang = mb_strtolower(trim($language));
 
-        // Catch locale variants like 'ar_SA', 'ar-EG', 'ar_eg', etc.
         if (str_starts_with($lang, 'ar_') || str_starts_with($lang, 'ar-')) {
             return true;
         }
 
-        return in_array(
-            $lang,
-            ['ar', 'arabic', 'عربي', 'عربية'],
-            true
-        );
+        return in_array($lang, ['ar', 'arabic', 'عربي', 'عربية'], true);
     }
 
     // ── Video generation ─────────────────────────────────────────────────────
@@ -55,27 +111,32 @@ class AiApiService
     /**
      * Request asynchronous video generation.
      *
-     * Automatically routes to the Arabic pipeline when $payload['language']
-     * is 'ar' (or any Arabic language alias). The AI service also supports
-     * an explicit POST /api/ar/generate-video endpoint.
+     * The pipeline (Arabic vs English) is chosen by detecting the LANGUAGE OF
+     * THE INPUT TEXT.  The UI page the user was on is irrelevant — if they
+     * typed Arabic on the English dashboard they get the Arabic pipeline, and
+     * vice-versa.
      *
      * Returns ['job_id' => '...', 'status' => 'queued', 'language' => 'en|ar'].
      */
     public function requestVideoGeneration(array $payload): array
     {
-        $language = $payload['language'] ?? 'en';
-        $arabic   = $this->isArabic($language);
+        $lang    = $this->detectLanguage($payload);
+        $arabic  = ($lang === 'ar');
 
-        // Use the explicit Arabic endpoint for clarity, even though the
-        // unified /api/generate-video also auto-routes on language='ar'.
+        // Normalise language in payload so the FastAPI side never has to guess
+        $payload['language'] = $lang;
+
+        // Both /api/generate-video and /api/ar/generate-video now do their own
+        // content-based detection; we still use the matching endpoint as a hint
+        // so logs on the Python side also reflect the right pipeline.
         $endpoint = $arabic
             ? "{$this->baseUrl}/api/ar/generate-video"
             : "{$this->baseUrl}/api/generate-video";
 
         Log::info('Video generation routing', [
-            'language_received' => $language,
-            'is_arabic'         => $arabic,
+            'detected_language' => $lang,
             'endpoint'          => $endpoint,
+            'topic_preview'     => mb_substr($payload['topic'] ?? '', 0, 60),
         ]);
 
         try {
@@ -83,7 +144,7 @@ class AiApiService
             $data     = $response->json();
             Log::info('Video generation queued', [
                 'job_id'   => $data['job_id']  ?? null,
-                'language' => $data['language'] ?? $language,
+                'language' => $data['language'] ?? $lang,
             ]);
             return $data;
         } catch (\Exception $e) {
@@ -91,7 +152,7 @@ class AiApiService
             return [
                 'job_id'   => 'mock_' . uniqid(),
                 'status'   => 'queued',
-                'language' => $language,
+                'language' => $lang,
             ];
         }
     }
@@ -101,17 +162,19 @@ class AiApiService
     /**
      * Generate MCQs from a video script.
      *
-     * Routes to the Arabic pipeline when $payload['language'] is 'ar'.
+     * Routes to the Arabic pipeline when the SCRIPT OR TOPIC TEXT is Arabic,
+     * regardless of which page the request originated from.
      *
-     * @param  array  $payload  Must include 'script', 'video_id', 'topic', 'language'.
+     * @param  array  $payload  Must include 'script', 'video_id', 'topic'.
      *                          Optionally 'k_slide_question_texts', 'num_questions'.
      * @return array            List of question objects ready for GenerateQuizJob.
      */
     public function generateQuiz(array $payload): array
     {
-        $language = $payload['language'] ?? 'en';
+        $lang = $this->detectLanguage($payload);
+        $payload['language'] = $lang;
 
-        $endpoint = $this->isArabic($language)
+        $endpoint = ($lang === 'ar')
             ? "{$this->baseUrl}/api/ar/generate-quiz"
             : "{$this->baseUrl}/api/generate-quiz";
 
@@ -123,12 +186,12 @@ class AiApiService
             $questions = $response->json('questions', []);
             Log::info('Quiz generated', [
                 'count'    => count($questions),
-                'language' => $language,
+                'language' => $lang,
             ]);
             return $questions;
         } catch (\Exception $e) {
             Log::error('AI quiz generation failed', ['error' => $e->getMessage()]);
-            return $this->isArabic($language)
+            return ($lang === 'ar')
                 ? $this->getMockArabicQuizQuestions()
                 : $this->getMockQuizQuestions();
         }
@@ -138,9 +201,6 @@ class AiApiService
 
     /**
      * Classify a student's VARK learning style.
-     *
-     * Falls back to local scoring whenever the AI service is unreachable,
-     * returns a non-2xx status, or omits the required 'result' key.
      * (VARK classification is language-agnostic — same endpoint for both.)
      */
     public function classifyVark(array $answers): array
@@ -181,18 +241,20 @@ class AiApiService
 
     /**
      * Analyse wrong answers and return misconception strings.
-     * Works for both languages — the AI service handles the language internally.
+     * The AI service handles the language internally based on the content.
      */
     public function analyzeMisconceptions(array $payload): array
     {
+        // Detect from the wrong-answer text if available
+        $lang = $this->detectLanguage($payload);
+        $payload['language'] = $lang;
+
         try {
             $response = $this->client()->post("{$this->baseUrl}/api/analyze-misconceptions", $payload);
             return $response->json('misconceptions', []);
         } catch (\Exception $e) {
             Log::error('Misconception analysis failed', ['error' => $e->getMessage()]);
-
-            $language = $payload['language'] ?? 'en';
-            return $this->isArabic($language)
+            return ($lang === 'ar')
                 ? ['تعذّر تحديد المفاهيم الخاطئة في الوقت الحالي.']
                 : ['Unable to identify specific misconceptions at this time.'];
         }
@@ -202,13 +264,19 @@ class AiApiService
 
     /**
      * Request an adaptive remedial lesson video.
-     * Routes to the Arabic pipeline when $payload['language'] is 'ar'.
+     * Routes to the Arabic pipeline when the MISCONCEPTIONS TEXT is Arabic.
      */
     public function requestAdaptiveLesson(array $payload): array
     {
-        $language = $payload['language'] ?? 'en';
+        // For adaptive lessons, the misconceptions array is the content signal
+        $misconceptions = $payload['misconceptions'] ?? [];
+        $sampleText     = implode(' ', array_slice(array_map('strval', $misconceptions), 0, 5));
 
-        $endpoint = $this->isArabic($language)
+        $detectionPayload = array_merge($payload, ['topic' => $sampleText]);
+        $lang = $this->detectLanguage($detectionPayload);
+        $payload['language'] = $lang;
+
+        $endpoint = ($lang === 'ar')
             ? "{$this->baseUrl}/api/ar/generate-adaptive-lesson"
             : "{$this->baseUrl}/api/generate-adaptive-lesson";
 
@@ -219,7 +287,7 @@ class AiApiService
             Log::error('Adaptive lesson request failed', ['error' => $e->getMessage()]);
             return [
                 'job_id'   => 'mock_adaptive_' . uniqid(),
-                'language' => $language,
+                'language' => $lang,
             ];
         }
     }
@@ -268,5 +336,68 @@ class AiApiService
                 'explanation'    => 'هذا هو المفهوم الأساسي المُغطَّى في المحاضرة.',
             ],
         ];
+    }
+
+        // ── OpenRouter chat ──────────────────────────────────────────────────────
+
+    /**
+     * Send a chat message to OpenRouter and return the assistant's reply.
+     *
+     * @param  string  $systemPrompt   System instructions for this conversation.
+     * @param  array   $history        Prior turns: [['role'=>'user','content'=>'…'], …]
+     * @param  string  $userMessage    The new user message.
+     * @param  string|null $model      Override the default chat model.
+     * @return string                  The assistant's plain-text reply.
+     */
+    public function openRouterChat(
+        string $systemPrompt,
+        array  $history,
+        string $userMessage,
+        ?string $model = null
+    ): string {
+        $model ??= config('services.openrouter.chat_model',
+                    env('OPENROUTER_CHAT_MODEL', 'mistralai/mistral-7b-instruct:free'));
+
+        $messages = array_merge(
+            [['role' => 'system', 'content' => $systemPrompt]],
+            $history,
+            [['role' => 'user',   'content' => $userMessage]],
+        );
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . env('OPENROUTER_API_KEY'),
+                'HTTP-Referer'  => config('app.url', 'https://edugenie.app'),
+                'X-Title'       => 'EduGenie',
+                'Content-Type'  => 'application/json',
+            ])
+            ->timeout(60)
+            ->post('https://openrouter.ai/api/v1/chat/completions', [
+                'model'    => $model,
+                'messages' => $messages,
+            ]);
+
+            if (! $response->successful()) {
+                Log::warning('OpenRouter chat non-success', [
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                ]);
+                return $this->fallbackReply($userMessage);
+            }
+
+            return $response->json('choices.0.message.content')
+                ?? $this->fallbackReply($userMessage);
+
+        } catch (\Exception $e) {
+            Log::error('OpenRouter chat failed', ['error' => $e->getMessage()]);
+            return $this->fallbackReply($userMessage);
+        }
+    }
+
+    private function fallbackReply(string $userMessage): string
+    {
+        return str_contains(mb_strtolower($userMessage), ['؟', 'ما', 'كيف', 'لماذا'])
+            ? 'عذراً، لم أتمكن من معالجة طلبك في الوقت الحالي. حاول مجدداً.'
+            : 'Sorry, I could not process your request right now. Please try again.';
     }
 }

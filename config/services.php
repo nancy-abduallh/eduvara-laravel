@@ -37,5 +37,10 @@ return [
         'webhook_secret' => env('AI_WEBHOOK_SECRET', ''),
     ],
 
+    'openrouter' => [
+    'key'        => env('OPENROUTER_API_KEY'),
+    'chat_model' => env('OPENROUTER_CHAT_MODEL', 'mistralai/mistral-7b-instruct:free'),
+    ],
+
 
 ];

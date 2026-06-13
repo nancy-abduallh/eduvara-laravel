@@ -201,11 +201,6 @@
 
 @push('scripts')
 <script>
-const messages = {
-    aiResponse: '{{ __("messages.student.videoshow.ai_response_placeholder") }}',
-    savingChat: '{{ __("messages.student.videoshow.saving_chat") }}'
-};
-
 // Auto-poll if processing
 @if(!$video->isReady())
 const pollInterval = setInterval(() => {
@@ -222,45 +217,67 @@ const pollInterval = setInterval(() => {
 }, 8000);
 @endif
 
-// Chat
-function sendChat() {
-    const input = document.getElementById('chatInput');
-    const text  = input.value.trim();
-    if (!text) return;
+// ── Chat ──────────────────────────────────────────────────────────────────
+const CHAT_SEND_URL = '{{ route("student.chat.send") }}';
+const CSRF_TOKEN    = document.querySelector('meta[name="csrf-token"]').content;
+const VIDEO_ID      = {{ $video->id }};
+
+async function sendChat() {
+    const input   = document.getElementById('chatInput');
+    const message = input.value.trim();
+    if (!message) return;
 
     const log = document.getElementById('chatLog');
 
-    // Add user message
-    const userMsg = document.createElement('div');
-    userMsg.className = 'chat-msg user';
-    userMsg.textContent = text;
-    log.appendChild(userMsg);
-    log.scrollTop = log.scrollHeight;
+    // Remove the "no messages" placeholder if present
+    const empty = log.querySelector('p');
+    if (empty) empty.remove();
 
+    // Append user bubble immediately
+    appendBubble(log, 'user', message);
     input.value = '';
 
-    // Simulate AI response (replace with real endpoint later)
-    setTimeout(() => {
-        const aiMsg = document.createElement('div');
-        aiMsg.className = 'chat-msg assistant';
-        aiMsg.textContent = messages.aiResponse;
-        log.appendChild(aiMsg);
-        log.scrollTop = log.scrollHeight;
+    // Typing indicator
+    const typingId = 'typing-' + Date.now();
+    appendBubble(log, 'assistant', '…', typingId);
 
-        // Save to backend
-        fetch('/api/chat/save', {
-            method: 'POST',
+    try {
+        const res = await fetch(CHAT_SEND_URL, {
+            method:  'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'Accept':       'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
             },
-            body: JSON.stringify({
-                video_id: {{ $video->id }},
-                user_message: text,
-                ai_response: aiMsg.textContent,
-            }),
-        }).catch(() => {});
-    }, 800);
+            body: JSON.stringify({ video_id: VIDEO_ID, message }),
+        });
+
+        const data = await res.json();
+
+        // Replace typing indicator with real reply
+        const typingEl = document.getElementById(typingId);
+        if (typingEl) typingEl.textContent = data.reply ?? data.error ?? 'Error';
+
+    } catch (err) {
+        const typingEl = document.getElementById(typingId);
+        if (typingEl) typingEl.textContent = 'Connection error. Please try again.';
+    }
+
+    log.scrollTop = log.scrollHeight;
 }
+
+function appendBubble(log, role, text, id = null) {
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    div.textContent = text;
+    if (id) div.id = id;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
+
+// Send on Enter key
+document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
 </script>
 @endpush
